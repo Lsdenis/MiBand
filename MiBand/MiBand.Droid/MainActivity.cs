@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using Android.App;
 using Android.Bluetooth;
@@ -14,11 +15,11 @@ using Object = Java.Lang.Object;
 
 namespace MiBand.Droid
 {
-    [Activity(Label = "MiBand", Icon = "@drawable/icon", MainLauncher = true,
-        ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation)]
+    [Activity(Label = "MiBand", Icon = "@drawable/icon", ConfigurationChanges = ConfigChanges.ScreenSize | ConfigChanges.Orientation)]
     public class MainActivity : global::Xamarin.Forms.Platform.Android.FormsApplicationActivity
     {
         public static BluetoothDevice Device = null;
+        public ScanCallback ScanCallback;
 
         protected override void OnCreate(Bundle bundle)
         {
@@ -26,36 +27,52 @@ namespace MiBand.Droid
 
             global::Xamarin.Forms.Forms.Init(this, bundle);
             LoadApplication(new App());
-
+            ScanCallback = new ScanCallbackClass() { OnSuccess = OnSuccess };
             ActivateMiBand();
         }
 
         private void ActivateMiBand()
-        {   
-            var a = new IMiBand(this);
-            var ad = BluetoothAdapter.DefaultAdapter;
-            var device = ad.BondedDevices;
-
-            IMiBand.StartScan(new ScanCallbackClass());
-
-            while (Device == null)
-            {
-                
-            }
-
-//            foreach (var bluetoothDevice in ad.BondedDevices)
-//            {
-//                var c = bluetoothDevice.Name;
-//            }
-
-            a.Connect(Device, new Callback());
-
-            a.StartVibration(VibrationMode.Vibration10TimesWithLed);
+        {
+            MiBandDevice = new IMiBand(this);
+            //            MiBandDevice1 = new IMiBand(Android.App.Application.Context);
+            IMiBand.StartScan(ScanCallback);
         }
+
+        public IMiBand MiBandDevice1 { get; set; }
+
+        private void OnSuccess(BluetoothDevice bluetoothDevice)
+        {
+            Xamarin.Forms.Device.BeginInvokeOnMainThread(() =>
+            {
+                IMiBand.StopScan(ScanCallback);
+
+
+                var a = new IMiBand(this);
+
+                a.Pair(new Callback() { OnConnected = OnConnected });
+
+                a.Connect(bluetoothDevice, new Callback() { OnConnected = OnConnected });
+
+                //                MiBandDevice.Connect(bluetoothDevice, new Callback() { OnConnected = OnConnected });
+                //                MiBandDevice1.Connect(bluetoothDevice, new Callback() { OnConnected = OnConnected });
+            });
+        }
+
+        private void OnConnected()
+        {
+            Xamarin.Forms.Device.BeginInvokeOnMainThread(() =>
+            {
+                MiBandDevice.StartVibration(VibrationMode.VibrationWithLed);
+            });
+        }
+
+        public IMiBand MiBandDevice { get; set; }
     }
 
     public class Callback : IActionCallback
     {
+        public Action OnConnected { get; set; }
+
         public void Dispose()
         {
         }
@@ -76,16 +93,23 @@ namespace MiBand.Droid
             {
                 Toast.MakeText(Android.App.Application.Context, "Connected", ToastLength.Short);
             });
+            OnConnected?.Invoke();
         }
     }
 
     public class ScanCallbackClass : ScanCallback
     {
+        public Action<BluetoothDevice> OnSuccess { get; set; }
+
         public override void OnScanResult(ScanCallbackType callbackType, ScanResult result)
         {
             base.OnScanResult(callbackType, result);
 
-            MainActivity.Device = result.Device;
+            if (result.Device.Address == "C8:0F:10:33:9D:41")
+            {
+                MainActivity.Device = result.Device;
+                OnSuccess?.Invoke(result.Device);
+            }
         }
     }
 
